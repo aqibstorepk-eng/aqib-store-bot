@@ -1,5 +1,9 @@
 import os
 import asyncio
+import json
+import html
+import urllib.request
+import urllib.error
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -10,14 +14,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+QAMIFY_API_KEY = os.getenv("QAMIFY_API_KEY")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
+
+if not QAMIFY_API_KEY:
+    raise RuntimeError("QAMIFY_API_KEY is not set")
 
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+QAMIFY_BASE_URL = "https://api.qamify.site"
+
+
+# =========================
+# MAIN MENU
+# =========================
 
 def main_menu():
     builder = InlineKeyboardBuilder()
@@ -33,93 +47,53 @@ def main_menu():
     return builder.as_markup()
 
 
+# =========================
+# QAMIFY API
+# =========================
+
+def qamify_get(endpoint):
+    url = QAMIFY_BASE_URL + endpoint
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {QAMIFY_API_KEY}",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = response.read().decode("utf-8")
+            return json.loads(data)
+
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            error_body = ""
+
+        print(f"QAMIFY HTTP ERROR {e.code}: {error_body}")
+        return None
+
+    except Exception as e:
+        print(f"QAMIFY ERROR: {e}")
+        return None
+
+
+async def get_products():
+    return await asyncio.to_thread(qamify_get, "/v1/products")
+
+
+# =========================
+# START
+# =========================
+
 @dp.message(Command("start"))
 async def start(message: Message):
     name = message.from_user.first_name or "Customer"
 
     text = (
-        f"👋 Welcome, <b>{name}</b>!\n\n"
-        "🛍 <b>Digital Aqib Store 🇵🇰</b>\n"
-        "Quality products at affordable prices.\n\n"
-        "Choose an option below:"
-    )
-
-    await message.answer(
-        text,
-        reply_markup=main_menu(),
-        parse_mode="HTML"
-    )
-
-
-@dp.callback_query(F.data == "shop")
-async def shop(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🛍 <b>SHOP</b>\n\n"
-        "📦 Products will appear here.\n\n"
-        "🔌 Supplier API will be connected in the next step.",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "wallet")
-async def wallet(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "💰 <b>WALLET</b>\n\n"
-        "Balance: <b>$0.00</b>\n\n"
-        "Payment system will be added later.",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "profile")
-async def profile(callback: CallbackQuery):
-    user = callback.from_user
-
-    await callback.message.edit_text(
-        f"👤 <b>PROFILE</b>\n\n"
-        f"Name: {user.full_name}\n"
-        f"Username: @{user.username or 'Not set'}\n"
-        f"User ID: <code>{user.id}</code>",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "freebies")
-async def freebies(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        "🎁 <b>FREEBIES</b>\n\n"
-        "Free products and offers will appear here.",
-        parse_mode="HTML"
-    )
-
-
-@dp.callback_query(F.data == "referrals")
-async def referrals(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        "🎯 <b>REFERRALS</b>\n\n"
-        "Your referral system will be added later.",
-        parse_mode="HTML"
-    )
-
-
-@dp.callback_query(F.data == "support")
-async def support(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        "📞 <b>SUPPORT</b>\n\n"
-        "Contact support here.",
-        parse_mode="HTML"
-    )
-
-
-async def main():
-    await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        f"👋 Welcome, <b>{html.escape(name)}</b>!\n\n"
+        "🛍 <b>Digital Aqib Store 🇵🇰</
